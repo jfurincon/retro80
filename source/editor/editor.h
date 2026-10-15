@@ -28,6 +28,9 @@ public:
     // Controller -> editor: a value changed (automation, preset, host).
     void paramChanged(Steinberg::Vst::ParamID id);
 
+    // Controller -> editor: new scope data arrived.
+    void scopeUpdated();
+
     // Impl -> editor: the zoom/DPI changed, ask the host for a new window size.
     void requestSize(int width, int height);
 

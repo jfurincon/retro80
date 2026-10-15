@@ -1,5 +1,8 @@
 #include "processor.h"
 #include "presets.h"
+#include "scope.h"
+
+#include <new>
 
 #include "pluginterfaces/vst/ivstevents.h"
 #include "pluginterfaces/vst/ivstparameterchanges.h"
@@ -26,6 +29,58 @@ tresult PLUGIN_API Processor::initialize(FUnknown* context) {
     return kResultOk;
 }
 
+tresult PLUGIN_API Processor::terminate() {
+    dataExchange_.reset();
+    return AudioEffect::terminate();
+}
+
+// The panel's wave display: audio blocks go to the controller through the
+// SDK's data-exchange helper (it falls back to messages on hosts without it).
+tresult PLUGIN_API Processor::connect(IConnectionPoint* other) {
+    const tresult r = AudioEffect::connect(other);
+    if (r == kResultTrue) {
+        dataExchange_ = std::make_unique<DataExchangeHandler>(
+            this, [](DataExchangeHandler::Config& config, const ProcessSetup&) {
+                config.blockSize = sizeof(ScopeBlock);
+                config.numBlocks = 8;
+                config.alignment = 32;
+                config.userContextID = 0;
+                return true;
+            });
+        dataExchange_->onConnect(other, getHostContext());
+    }
+    return r;
+}
+
+tresult PLUGIN_API Processor::disconnect(IConnectionPoint* other) {
+    if (dataExchange_) {
+        dataExchange_->onDisconnect(other);
+        dataExchange_.reset();
+    }
+    return AudioEffect::disconnect(other);
+}
+
+void Processor::sendScope(int numSamples) {
+    if (!dataExchange_) return;
+    samplesSinceScope_ += numSamples;
+    if (samplesSinceScope_ < static_cast<int>(processSetup.sampleRate / 30.0)) return;  // ~30 fps
+    samplesSinceScope_ = 0;
+    auto block = dataExchange_->getCurrentOrNewBlock();
+    if (block.blockID == InvalidDataExchangeBlockID || block.size < sizeof(ScopeBlock)) return;
+    auto* sb = new (block.data) ScopeBlock;
+    sb->activeVoices = engine_.activeVoices();
+    sb->sampleRate = static_cast<float>(processSetup.sampleRate);
+    sb->pitchHz = engine_.lowestActiveHz();
+    const float* ring = engine_.scopeBuffer();
+    int pos = engine_.scopeWritePos() - ScopeBlock::kSamples;
+    if (pos < 0) pos += Engine::kScopeSize;
+    for (int i = 0; i < ScopeBlock::kSamples; ++i) {
+        sb->samples[i] = ring[pos];
+        if (++pos >= Engine::kScopeSize) pos = 0;
+    }
+    dataExchange_->sendCurrentBlock();
+}
+
 tresult PLUGIN_API Processor::setBusArrangements(SpeakerArrangement* inputs, int32 numIns,
                                                  SpeakerArrangement* outputs, int32 numOuts) {
     // Instrument: no audio inputs, one stereo output.
@@ -45,6 +100,10 @@ tresult PLUGIN_API Processor::setupProcessing(ProcessSetup& setup) {
 
 tresult PLUGIN_API Processor::setActive(TBool state) {
     if (state) engine_.reset();
+    if (dataExchange_) {
+        if (state) dataExchange_->onActivate(processSetup);
+        else dataExchange_->onDeactivate();
+    }
     return AudioEffect::setActive(state);
 }
 
@@ -70,6 +129,8 @@ void Processor::handleParameterChanges(IParameterChanges* changes) {
             engine_.setPitchBend(static_cast<float>(value * 2.0 - 1.0));
         } else if (id == kModWheel) {
             engine_.setModWheel(static_cast<float>(value));
+        } else if (id == kAftertouch) {
+            engine_.setAftertouch(static_cast<float>(value));
         } else if (id == kSustainPedal) {
             engine_.setSustainPedal(value >= 0.5);
         } else if (id == kProgram) {
@@ -85,6 +146,15 @@ tresult PLUGIN_API Processor::process(ProcessData& data) {
     handleParameterChanges(data.inputParameterChanges);
 
     if (data.numOutputs < 1 || data.numSamples <= 0) return kResultOk;  // parameter flush
+
+    // Tempo and song position for the arpeggiator, synced LFOs and delay.
+    if (const ProcessContext* ctx = data.processContext) {
+        const double bpm = (ctx->state & ProcessContext::kTempoValid) ? ctx->tempo : 120.0;
+        const double ppq = (ctx->state & ProcessContext::kProjectTimeMusicValid) ? ctx->projectTimeMusic : 0.0;
+        const bool playing = (ctx->state & ProcessContext::kPlaying) != 0 &&
+                             (ctx->state & ProcessContext::kProjectTimeMusicValid) != 0;
+        engine_.setTransport(bpm, ppq, playing);
+    }
 
     AudioBusBuffers& out = data.outputs[0];
     if (out.numChannels < 2) return kResultOk;
@@ -116,6 +186,9 @@ tresult PLUGIN_API Processor::process(ProcessData& data) {
             case Event::kNoteOffEvent:
                 engine_.noteOff(ev.noteOff.pitch);
                 break;
+            case Event::kPolyPressureEvent:
+                engine_.setPolyPressure(ev.polyPressure.pitch, ev.polyPressure.pressure);
+                break;
             default:
                 break;
         }
@@ -125,6 +198,7 @@ tresult PLUGIN_API Processor::process(ProcessData& data) {
         engine_.render(left + rendered, right + rendered, data.numSamples - rendered);
 
     out.silenceFlags = 0;
+    sendScope(data.numSamples);
     return kResultOk;
 }
 

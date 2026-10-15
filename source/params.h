@@ -62,6 +62,45 @@ enum ParamId : uint32_t {
 
     kChorus,
 
+    // ---- Phase 3 (v0.3.0) ----
+    kOscSync,
+    kXMod,
+    kOsc2Sweep,
+    kLfoSync,
+
+    kLfo2Wave,
+    kLfo2Rate,
+    kLfo2Sync,
+
+    kMEnvA,
+    kMEnvD,
+    kMEnvS,
+    kMEnvR,
+
+    kMod1Src, kMod1Dst, kMod1Amt,
+    kMod2Src, kMod2Dst, kMod2Amt,
+    kMod3Src, kMod3Dst, kMod3Amt,
+    kMod4Src, kMod4Dst, kMod4Amt,
+
+    kArpOn,
+    kArpMode,
+    kArpRate,
+    kArpOctaves,
+    kArpGate,
+    kArpLatch,
+
+    kDlyMix,
+    kDlyTime,
+    kDlySync,
+    kDlyFeedback,
+    kDlyTone,
+    kDlyPingPong,
+
+    kRevMix,
+    kRevDecay,
+    kRevDamp,
+    kRevPreDelay,
+
     kNumParams,
 
     // Hidden, MIDI-mapped (not part of patches).
@@ -70,7 +109,10 @@ enum ParamId : uint32_t {
     // Factory program selector.
     kProgram = 102,
     kSustainPedal = 103,
+    kAftertouch = 104,
 };
+
+constexpr int kNumModSlots = 4;
 
 enum class Scale : uint8_t {
     Linear,  // min..max
@@ -99,13 +141,37 @@ inline const char* const kOsc2Waves[] = {"Saw", "Pulse", "Triangle", "Sine"};
 inline const char* const kLfoWaves[] = {"Triangle", "Sine", "Square", "Saw Down", "Random"};
 inline const char* const kVoiceModes[] = {"Poly", "Mono", "Unison"};
 inline const char* const kChorusModes[] = {"Off", "I", "II", "I+II"};
+inline const char* const kOffOn[] = {"Off", "On"};
+
+// Tempo divisions (length in quarter-note beats alongside).
+inline const char* const kLfoSyncDivs[] = {"Off", "4 bars", "2 bars", "1 bar", "1/2", "1/4", "1/8",
+                                          "1/16", "1/4 T", "1/8 T", "1/16 T", "1/4 .", "1/8 ."};
+constexpr double kLfoSyncBeats[] = {0, 16, 8, 4, 2, 1, 0.5, 0.25, 2.0 / 3, 1.0 / 3, 1.0 / 6, 1.5, 0.75};
+
+inline const char* const kDelaySyncDivs[] = {"Off", "1/32", "1/16 T", "1/16", "1/16 .", "1/8 T",
+                                            "1/8", "1/8 .", "1/4 T", "1/4", "1/4 .", "1/2"};
+constexpr double kDelaySyncBeats[] = {0, 0.125, 1.0 / 6, 0.25, 0.375, 1.0 / 3, 0.5, 0.75, 2.0 / 3, 1, 1.5, 2};
+
+inline const char* const kArpRates[] = {"1/4", "1/8", "1/8 T", "1/16", "1/16 T", "1/32"};
+constexpr double kArpRateBeats[] = {1, 0.5, 1.0 / 3, 0.25, 1.0 / 6, 0.125};
+
+inline const char* const kArpModes[] = {"Up", "Down", "Up/Down", "Random", "As Played"};
+
+inline const char* const kModSources[] = {"Off", "LFO 1", "LFO 2", "Mod Env", "Velocity",
+                                         "Mod Wheel", "Aftertouch", "Key", "Random"};
+enum ModSource { kSrcOff, kSrcLfo1, kSrcLfo2, kSrcModEnv, kSrcVelocity, kSrcModWheel, kSrcAftertouch, kSrcKey, kSrcRandom };
+
+inline const char* const kModDests[] = {"Off", "Pitch", "Osc 2 Pitch", "Pulse Width", "Cutoff", "Resonance", "Amp",
+                                       "Pan", "Cross Mod", "Osc 1 Level", "Osc 2 Level", "Sub Level", "Noise Level"};
+enum ModDest { kDstOff, kDstPitch, kDstOsc2Pitch, kDstPW, kDstCutoff, kDstReso, kDstAmp,
+               kDstPan, kDstXMod, kDstOsc1Lvl, kDstOsc2Lvl, kDstSubLvl, kDstNoiseLvl, kNumModDests };
 
 template <size_t N>
 constexpr int countOf(const char* const (&)[N]) { return static_cast<int>(N); }
 
 // ---- the table (order = kParamId order, checked at startup) -----------------
 inline const ParamDef kParamDefs[] = {
-    {kVolume, "Volume", "Vol", Scale::Linear, DisplayUnit::Volume, 0.0f, 1.0f, 0.70710678f},
+    {kVolume, "Master Volume", "Master", Scale::Linear, DisplayUnit::Volume, 0.0f, 1.0f, 0.70710678f},
 
     {kOsc1Wave, "Osc 1 Wave", "Wave", Scale::List, DisplayUnit::None, 0, 3, 0, kOsc1Waves, countOf(kOsc1Waves)},
     {kOsc1PW, "Osc 1 Pulse Width", "PW", Scale::Linear, DisplayUnit::Percent, 0.05f, 0.5f, 0.5f},
@@ -151,6 +217,52 @@ inline const ParamDef kParamDefs[] = {
     {kDrift, "Analog Drift", "Drift", Scale::Linear, DisplayUnit::Percent, 0, 1, 0.3f},
 
     {kChorus, "Chorus", "Chorus", Scale::List, DisplayUnit::None, 0, 3, 1, kChorusModes, countOf(kChorusModes)},
+
+    {kOscSync, "Osc 2 Sync", "Sync", Scale::List, DisplayUnit::None, 0, 1, 0, kOffOn, countOf(kOffOn)},
+    {kXMod, "Cross Mod (Osc 2 > Osc 1)", "X-Mod", Scale::Linear, DisplayUnit::Percent, 0, 1, 0},
+    {kOsc2Sweep, "Mod Env > Osc 2 Pitch", "Sweep", Scale::Linear, DisplayUnit::Bipolar, -1, 1, 0},
+    {kLfoSync, "LFO 1 Tempo Sync", "Sync", Scale::List, DisplayUnit::None, 0, 12, 0, kLfoSyncDivs, countOf(kLfoSyncDivs)},
+
+    {kLfo2Wave, "LFO 2 Wave", "Wave", Scale::List, DisplayUnit::None, 0, 4, 1, kLfoWaves, countOf(kLfoWaves)},
+    {kLfo2Rate, "LFO 2 Rate", "Rate", Scale::Log, DisplayUnit::Hz, 0.05f, 20, 0.5f},
+    {kLfo2Sync, "LFO 2 Tempo Sync", "Sync", Scale::List, DisplayUnit::None, 0, 12, 0, kLfoSyncDivs, countOf(kLfoSyncDivs)},
+
+    {kMEnvA, "Mod Env Attack", "A", Scale::Time, DisplayUnit::Seconds, 0.001f, 10, 0.001f},
+    {kMEnvD, "Mod Env Decay", "D", Scale::Time, DisplayUnit::Seconds, 0.005f, 10, 0.3f},
+    {kMEnvS, "Mod Env Sustain", "S", Scale::Linear, DisplayUnit::Percent, 0, 1, 0.0f},
+    {kMEnvR, "Mod Env Release", "R", Scale::Time, DisplayUnit::Seconds, 0.005f, 10, 0.3f},
+
+    {kMod1Src, "Mod 1 Source", "Source", Scale::List, DisplayUnit::None, 0, 8, 0, kModSources, countOf(kModSources)},
+    {kMod1Dst, "Mod 1 Destination", "Dest", Scale::List, DisplayUnit::None, 0, 12, 0, kModDests, countOf(kModDests)},
+    {kMod1Amt, "Mod 1 Amount", "Amount", Scale::Linear, DisplayUnit::Bipolar, -1, 1, 0},
+    {kMod2Src, "Mod 2 Source", "Source", Scale::List, DisplayUnit::None, 0, 8, 0, kModSources, countOf(kModSources)},
+    {kMod2Dst, "Mod 2 Destination", "Dest", Scale::List, DisplayUnit::None, 0, 12, 0, kModDests, countOf(kModDests)},
+    {kMod2Amt, "Mod 2 Amount", "Amount", Scale::Linear, DisplayUnit::Bipolar, -1, 1, 0},
+    {kMod3Src, "Mod 3 Source", "Source", Scale::List, DisplayUnit::None, 0, 8, 0, kModSources, countOf(kModSources)},
+    {kMod3Dst, "Mod 3 Destination", "Dest", Scale::List, DisplayUnit::None, 0, 12, 0, kModDests, countOf(kModDests)},
+    {kMod3Amt, "Mod 3 Amount", "Amount", Scale::Linear, DisplayUnit::Bipolar, -1, 1, 0},
+    {kMod4Src, "Mod 4 Source", "Source", Scale::List, DisplayUnit::None, 0, 8, 0, kModSources, countOf(kModSources)},
+    {kMod4Dst, "Mod 4 Destination", "Dest", Scale::List, DisplayUnit::None, 0, 12, 0, kModDests, countOf(kModDests)},
+    {kMod4Amt, "Mod 4 Amount", "Amount", Scale::Linear, DisplayUnit::Bipolar, -1, 1, 0},
+
+    {kArpOn, "Arpeggiator", "Arp", Scale::List, DisplayUnit::None, 0, 1, 0, kOffOn, countOf(kOffOn)},
+    {kArpMode, "Arp Mode", "Mode", Scale::List, DisplayUnit::None, 0, 4, 0, kArpModes, countOf(kArpModes)},
+    {kArpRate, "Arp Rate", "Rate", Scale::List, DisplayUnit::None, 0, 5, 3, kArpRates, countOf(kArpRates)},
+    {kArpOctaves, "Arp Octaves", "Octaves", Scale::Int, DisplayUnit::Count, 1, 4, 1},
+    {kArpGate, "Arp Gate", "Gate", Scale::Linear, DisplayUnit::Percent, 0.05f, 1, 0.6f},
+    {kArpLatch, "Arp Latch", "Latch", Scale::List, DisplayUnit::None, 0, 1, 0, kOffOn, countOf(kOffOn)},
+
+    {kDlyMix, "Delay Mix", "Mix", Scale::Linear, DisplayUnit::Percent, 0, 1, 0},
+    {kDlyTime, "Delay Time", "Time", Scale::Time, DisplayUnit::Seconds, 0.01f, 2, 0.375f},
+    {kDlySync, "Delay Tempo Sync", "Sync", Scale::List, DisplayUnit::None, 0, 11, 7, kDelaySyncDivs, countOf(kDelaySyncDivs)},
+    {kDlyFeedback, "Delay Feedback", "Feedback", Scale::Linear, DisplayUnit::Percent, 0, 0.95f, 0.35f},
+    {kDlyTone, "Delay Tone", "Tone", Scale::Log, DisplayUnit::Hz, 500, 16000, 4500},
+    {kDlyPingPong, "Delay Ping-Pong", "Ping-Pong", Scale::List, DisplayUnit::None, 0, 1, 1, kOffOn, countOf(kOffOn)},
+
+    {kRevMix, "Reverb Mix", "Mix", Scale::Linear, DisplayUnit::Percent, 0, 1, 0},
+    {kRevDecay, "Reverb Decay", "Decay", Scale::Log, DisplayUnit::Seconds, 0.3f, 12, 2.5f},
+    {kRevDamp, "Reverb Damping", "Damp", Scale::Linear, DisplayUnit::Percent, 0, 1, 0.4f},
+    {kRevPreDelay, "Reverb Pre-Delay", "Pre-Dly", Scale::Linear, DisplayUnit::Seconds, 0, 0.2f, 0.02f},
 };
 
 constexpr int kNumPatchParams = static_cast<int>(kNumParams);

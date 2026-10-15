@@ -4,6 +4,7 @@
 #include "state.h"
 
 #if defined(_WIN32)
+#include <windows.h>
 #include "editor/editor.h"
 #endif
 
@@ -92,6 +93,8 @@ tresult PLUGIN_API Controller::initialize(FUnknown* context) {
                             ParameterInfo::kCanAutomate | ParameterInfo::kIsHidden, kModWheel);
     parameters.addParameter(STR16("Sustain Pedal"), nullptr, 1, 0.0,
                             ParameterInfo::kCanAutomate | ParameterInfo::kIsHidden, kSustainPedal);
+    parameters.addParameter(STR16("Aftertouch"), nullptr, 0, 0.0,
+                            ParameterInfo::kCanAutomate | ParameterInfo::kIsHidden, retro80::kAftertouch);
     return kResultOk;
 }
 
@@ -125,6 +128,45 @@ void Controller::editorPerformEdit(ParamID id, ParamValue v) {
     performEdit(id, v);
 }
 
+tresult PLUGIN_API Controller::notify(IMessage* message) {
+    if (dataExchangeReceiver_.onMessage(message)) return kResultTrue;
+    return EditControllerEx1::notify(message);
+}
+
+static uint64 nowMs() {
+#if defined(_WIN32)
+    return GetTickCount64();
+#else
+    return 0;
+#endif
+}
+
+void PLUGIN_API Controller::onDataExchangeBlocksReceived(DataExchangeUserContextID, uint32 numBlocks,
+                                                         DataExchangeBlock* blocks, TBool) {
+    if (numBlocks == 0) return;
+    const DataExchangeBlock& b = blocks[numBlocks - 1];  // only the newest matters
+    if (b.size < sizeof(ScopeBlock)) return;
+    const auto* sb = static_cast<const ScopeBlock*>(b.data);
+    if (sb->magic != ScopeBlock::kMagic) return;
+    {
+        std::lock_guard<std::mutex> lock(scopeMutex_);
+        scope_ = *sb;
+        hasScope_ = true;
+        scopeTimeMs_ = nowMs();
+    }
+#if defined(_WIN32)
+    if (editor_) editor_->scopeUpdated();
+#endif
+}
+
+bool Controller::latestScope(ScopeBlock& out, uint32& ageMs) const {
+    std::lock_guard<std::mutex> lock(scopeMutex_);
+    if (!hasScope_) return false;
+    out = scope_;
+    ageMs = static_cast<uint32>(nowMs() - scopeTimeMs_);
+    return true;
+}
+
 IPlugView* PLUGIN_API Controller::createView(FIDString name) {
 #if defined(_WIN32)
     if (name && std::strcmp(name, ViewType::kEditor) == 0) {
@@ -145,6 +187,7 @@ tresult PLUGIN_API Controller::getMidiControllerAssignment(int32 busIndex, int16
         case Steinberg::Vst::kPitchBend: id = retro80::kPitchBend; return kResultTrue;
         case kCtrlModWheel: id = retro80::kModWheel; return kResultTrue;
         case kCtrlSustainOnOff: id = retro80::kSustainPedal; return kResultTrue;
+        case Steinberg::Vst::kAfterTouch: id = retro80::kAftertouch; return kResultTrue;
         default: return kResultFalse;
     }
 }

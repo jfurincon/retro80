@@ -1,12 +1,18 @@
-// Windows test host: loads Retro80.vst3, opens its editor in a window,
-// simulates a few clicks/drags and saves screenshots (BMP) after each step.
+// Windows test host: loads Retro80.vst3 like a DAW would (processor + controller,
+// connected), plays notes through the real audio processor, opens the editor,
+// simulates clicks and saves screenshots (BMP) after each step.
 // usage: editor_snapshot.exe <path\to\Retro80.vst3 dll> <output prefix>
 #include <windows.h>
 
 #include "pluginterfaces/base/ipluginbase.h"
 #include "pluginterfaces/gui/iplugview.h"
-#include "pluginterfaces/vst/ivsteditcontroller.h"
+#include "pluginterfaces/vst/ivstaudioprocessor.h"
 #include "pluginterfaces/vst/ivstcomponent.h"
+#include "pluginterfaces/vst/ivsteditcontroller.h"
+#include "pluginterfaces/vst/ivstmessage.h"
+#include "public.sdk/source/vst/hosting/eventlist.h"
+#include "public.sdk/source/vst/hosting/hostclasses.h"
+#include "public.sdk/source/vst/hosting/processdata.h"
 
 #include <cstdio>
 #include <cstring>
@@ -18,15 +24,11 @@ using namespace Steinberg::Vst;
 typedef IPluginFactory*(PLUGIN_API* GetFactoryProc)();
 typedef bool(PLUGIN_API* InitDllProc)();
 
-static void pump(int ms) {
-    const DWORD end = GetTickCount() + ms;
-    while (GetTickCount() < end) {
-        MSG msg;
-        while (PeekMessageW(&msg, nullptr, 0, 0, PM_REMOVE)) {
-            TranslateMessage(&msg);
-            DispatchMessageW(&msg);
-        }
-        Sleep(10);
+static void pumpOnce() {
+    MSG msg;
+    while (PeekMessageW(&msg, nullptr, 0, 0, PM_REMOVE)) {
+        TranslateMessage(&msg);
+        DispatchMessageW(&msg);
     }
 }
 
@@ -37,7 +39,6 @@ static bool saveBmp(HWND hwnd, int w, int h, const std::wstring& path) {
     HGDIOBJ old = SelectObject(mem, bmp);
     BitBlt(mem, 0, 0, w, h, src, 0, 0, SRCCOPY);
     SelectObject(mem, old);
-
     BITMAPINFOHEADER bi{};
     bi.biSize = sizeof(bi);
     bi.biWidth = w;
@@ -48,7 +49,6 @@ static bool saveBmp(HWND hwnd, int w, int h, const std::wstring& path) {
     const int stride = ((w * 3 + 3) / 4) * 4;
     std::string pixels(stride * h, '\0');
     GetDIBits(mem, bmp, 0, h, &pixels[0], reinterpret_cast<BITMAPINFO*>(&bi), DIB_RGB_COLORS);
-
     BITMAPFILEHEADER bf{};
     bf.bfType = 0x4D42;
     bf.bfOffBits = sizeof(bf) + sizeof(bi);
@@ -70,27 +70,73 @@ int wmain(int argc, wchar_t** argv) {
     HMODULE lib = LoadLibraryW(argv[1]);
     if (!lib) { printf("LoadLibrary failed %lu\n", GetLastError()); return 1; }
     if (auto init = reinterpret_cast<InitDllProc>(GetProcAddress(lib, "InitDll"))) init();
-    auto getFactory = reinterpret_cast<GetFactoryProc>(GetProcAddress(lib, "GetPluginFactory"));
-    IPluginFactory* factory = getFactory();
+    IPluginFactory* factory = reinterpret_cast<GetFactoryProc>(GetProcAddress(lib, "GetPluginFactory"))();
 
+    IComponent* comp = nullptr;
     IEditController* ctrl = nullptr;
     for (int32 i = 0; i < factory->countClasses(); ++i) {
         PClassInfo ci;
         factory->getClassInfo(i, &ci);
+        if (std::strcmp(ci.category, kVstAudioEffectClass) == 0)
+            factory->createInstance(ci.cid, IComponent::iid, reinterpret_cast<void**>(&comp));
         if (std::strcmp(ci.category, kVstComponentControllerClass) == 0)
             factory->createInstance(ci.cid, IEditController::iid, reinterpret_cast<void**>(&ctrl));
     }
-    if (!ctrl) { printf("no controller\n"); return 1; }
-    ctrl->initialize(nullptr);
-    printf("parameters: %d\n", ctrl->getParameterCount());
+    if (!comp || !ctrl) { printf("missing classes\n"); return 1; }
+
+    auto* host = new HostApplication;
+    comp->initialize(host);
+    ctrl->initialize(host);
+    IConnectionPoint *cpComp = nullptr, *cpCtrl = nullptr;
+    comp->queryInterface(IConnectionPoint::iid, reinterpret_cast<void**>(&cpComp));
+    ctrl->queryInterface(IConnectionPoint::iid, reinterpret_cast<void**>(&cpCtrl));
+    cpComp->connect(cpCtrl);
+    cpCtrl->connect(cpComp);
+
+    IAudioProcessor* proc = nullptr;
+    comp->queryInterface(IAudioProcessor::iid, reinterpret_cast<void**>(&proc));
+    ProcessSetup setup{kRealtime, kSample32, 512, 48000.0};
+    proc->setupProcessing(setup);
+    comp->activateBus(kAudio, kOutput, 0, true);
+    comp->activateBus(kEvent, kInput, 0, true);
+    comp->setActive(true);
+    proc->setProcessing(true);
+
+    HostProcessData pd;
+    pd.prepare(*comp, 512, kSample32);
+    pd.numSamples = 512;
+    EventList events;
+    pd.inputEvents = &events;
+    ProcessContext ctx{};
+    ctx.sampleRate = 48000;
+    ctx.tempo = 120;
+    ctx.state = ProcessContext::kTempoValid;
+    pd.processContext = &ctx;
+
+    auto note = [&](int pitch, bool on) {
+        Event e{};
+        e.type = on ? Event::kNoteOnEvent : Event::kNoteOffEvent;
+        if (on) { e.noteOn.pitch = static_cast<int16>(pitch); e.noteOn.velocity = 0.9f; e.noteOn.noteId = -1; }
+        else { e.noteOff.pitch = static_cast<int16>(pitch); e.noteOff.velocity = 0; e.noteOff.noteId = -1; }
+        events.addEvent(e);
+    };
+    // Run audio in roughly real time while the UI thread pumps messages.
+    auto run = [&](int ms) {
+        const DWORD end = GetTickCount() + ms;
+        while (GetTickCount() < end) {
+            proc->process(pd);
+            events.clear();
+            pumpOnce();
+            Sleep(10);
+        }
+    };
 
     IPlugView* view = ctrl->createView(ViewType::kEditor);
-    if (!view) { printf("no view\n"); return 1; }
     ViewRect r;
     view->getSize(&r);
     const int w = r.getWidth(), h = r.getHeight();
-    printf("editor size %dx%d, HWND supported=%d\n", w, h, view->isPlatformTypeSupported(kPlatformTypeHWND) == kResultTrue);
-
+    const double sc = w / 1136.0;
+    printf("editor %dx%d (%.0f%%)\n", w, h, sc * 100);
     WNDCLASSW wc{};
     wc.lpfnWndProc = DefWindowProcW;
     wc.hInstance = GetModuleHandleW(nullptr);
@@ -99,62 +145,56 @@ int wmain(int argc, wchar_t** argv) {
     HWND top = CreateWindowExW(0, L"SnapshotHost", L"host", WS_POPUP | WS_VISIBLE, 0, 0, w, h, nullptr, nullptr,
                                wc.hInstance, nullptr);
     view->attached(top, kPlatformTypeHWND);
-    pump(800);
     HWND child = GetWindow(top, GW_CHILD);
     std::wstring prefix = argv[2];
-    saveBmp(top, w, h, prefix + L"_1_init.bmp");
-
-    // Panel is drawn in logical units (1038 wide at 100%) and scaled.
-    double sc = w / 1038.0;
-    printf("opened at %.0f%% zoom\n", sc * 100);
-    auto click = [&](double lx, double ly) {  // logical coordinates
+    auto click = [&](double lx, double ly) {
         const LPARAM p = MAKELPARAM(int(lx * sc), int(ly * sc));
         SendMessageW(child, WM_MOUSEMOVE, 0, p);
         SendMessageW(child, WM_LBUTTONDOWN, MK_LBUTTON, p);
         SendMessageW(child, WM_LBUTTONUP, 0, p);
-        pump(250);
-    };
-    auto hoverAt = [&](double lx, double ly) {
-        SendMessageW(child, WM_MOUSEMOVE, 0, MAKELPARAM(int(lx * sc), int(ly * sc)));
-        pump(150);
+        run(200);
     };
 
-    // 1. Open the OSC 1 wave dropdown, hover "Pulse", screenshot, pick it.
-    click(58, 124);
-    hoverAt(70, 186);
-    saveBmp(top, w, h, prefix + L"_2_wave_dropdown.bmp");
-    click(70, 186);
-    printf("osc1 wave after picking Pulse: %.3f (expect 0.333)\n", ctrl->getParamNormalized(1));
+    run(700);
+    saveBmp(top, w, h, prefix + L"_1_synth_idle.bmp");
 
-    // 2. Zoom dropdown -> 150%: the view asks for a new size.
-    click(677, 29);
-    saveBmp(top, w, h, prefix + L"_3_zoom_dropdown.bmp");
-    click(677, 115);
-    view->getSize(&r);
-    const int w2 = r.getWidth(), h2 = r.getHeight();
-    printf("size after choosing 150%%: %dx%d\n", w2, h2);
-    SetWindowPos(top, nullptr, 0, 0, w2, h2, SWP_NOZORDER | SWP_NOMOVE);
-    pump(300);
-    sc = w2 / 1038.0;
-    saveBmp(top, w2, h2, prefix + L"_4_zoom150.bmp");
+    note(45, true);  // A2
+    run(700);
+    saveBmp(top, w, h, prefix + L"_2_synth_live.bmp");
+    note(45, false);
+    run(600);
 
-    // 3. Patch dropdown at 150%: open, hover 5th patch, screenshot, pick it.
-    click(872, 29);
-    hoverAt(872, 50 + 4 * 26 + 13);
-    saveBmp(top, w2, h2, prefix + L"_5_patch_dropdown.bmp");
-    click(872, 50 + 4 * 26 + 13);
-    printf("program after picking 5th patch: %.3f (expect 0.500)\n", ctrl->getParamNormalized(102));
+    click(379, 29);  // MOD / ARP / FX tab
+    saveBmp(top, w, h, prefix + L"_3_mod_page.bmp");
 
-    // 4. Restore 125% so the next run starts from the default.
-    click(677, 29);
-    click(677, 50 + 1 * 26 + 13);
-    view->getSize(&r);
-    printf("size after choosing 125%%: %dx%d\n", r.getWidth(), r.getHeight());
+    const double cell = (1104 - 20) / 16.0;
+    click(26 + 2.25 * cell, 250);  // Mod 1 destination dropdown
+    SendMessageW(child, WM_MOUSEMOVE, 0, MAKELPARAM(int(26 + 2.25 * cell) * sc, int(229 * sc)));
+    run(150);
+    saveBmp(top, w, h, prefix + L"_4_matrix_dropdown.bmp");
+    click(26 + 2.25 * cell, 229);
+    printf("mod 1 dest = %.3f (Cutoff = %.3f)\n", ctrl->getParamNormalized(50), 4.0 / 12.0);
 
+    const double c1 = (1104 - 80) / 13.5;
+    click(86 + 7.5 * c1, 124);  // Arp on/off
+    printf("arp = %.0f\n", ctrl->getParamNormalized(61));
+    saveBmp(top, w, h, prefix + L"_5_arp_on.bmp");
+
+    click(214 + 43, 29);  // back to SYNTH
     view->removed();
     view->release();
+    proc->setProcessing(false);
+    comp->setActive(false);
+    cpComp->disconnect(cpCtrl);
+    cpCtrl->disconnect(cpComp);
+    cpComp->release();
+    cpCtrl->release();
+    proc->release();
+    pd.unprepare();
     ctrl->terminate();
+    comp->terminate();
     ctrl->release();
+    comp->release();
     DestroyWindow(top);
     printf("done\n");
     return 0;

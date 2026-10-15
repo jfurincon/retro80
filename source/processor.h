@@ -1,10 +1,13 @@
 #pragma once
 
+#include "public.sdk/source/vst/utility/dataexchange.h"
 #include "public.sdk/source/vst/vstaudioeffect.h"
 
 #include "dsp/engine.h"
 #include "ids.h"
 #include "state.h"
+
+#include <memory>
 
 namespace retro80 {
 
@@ -17,6 +20,9 @@ public:
     }
 
     Steinberg::tresult PLUGIN_API initialize(Steinberg::FUnknown* context) override;
+    Steinberg::tresult PLUGIN_API terminate() override;
+    Steinberg::tresult PLUGIN_API connect(Steinberg::Vst::IConnectionPoint* other) override;
+    Steinberg::tresult PLUGIN_API disconnect(Steinberg::Vst::IConnectionPoint* other) override;
     Steinberg::tresult PLUGIN_API setBusArrangements(Steinberg::Vst::SpeakerArrangement* inputs,
                                                      Steinberg::int32 numIns,
                                                      Steinberg::Vst::SpeakerArrangement* outputs,
@@ -28,13 +34,17 @@ public:
     Steinberg::tresult PLUGIN_API setState(Steinberg::IBStream* state) override;
     Steinberg::tresult PLUGIN_API getState(Steinberg::IBStream* state) override;
     Steinberg::uint32 PLUGIN_API getLatencySamples() override { return Engine::kLatency; }
+    Steinberg::uint32 PLUGIN_API getTailSamples() override { return Steinberg::Vst::kInfiniteTail; }
 
 private:
     void handleParameterChanges(Steinberg::Vst::IParameterChanges* changes);
     void applyPatchToEngine();
+    void sendScope(int numSamples);
 
     Engine engine_;
     PatchArray patch_ = defaultPatch();
+    std::unique_ptr<Steinberg::Vst::DataExchangeHandler> dataExchange_;
+    int samplesSinceScope_ = 0;
 };
 
 } // namespace retro80
