@@ -104,35 +104,52 @@ int wmain(int argc, wchar_t** argv) {
     std::wstring prefix = argv[2];
     saveBmp(top, w, h, prefix + L"_1_init.bmp");
 
-    auto click = [&](int x, int y) {
-        SendMessageW(child, WM_LBUTTONDOWN, MK_LBUTTON, MAKELPARAM(x, y));
-        SendMessageW(child, WM_LBUTTONUP, 0, MAKELPARAM(x, y));
+    // Panel is drawn in logical units (1038 wide at 100%) and scaled.
+    double sc = w / 1038.0;
+    printf("opened at %.0f%% zoom\n", sc * 100);
+    auto click = [&](double lx, double ly) {  // logical coordinates
+        const LPARAM p = MAKELPARAM(int(lx * sc), int(ly * sc));
+        SendMessageW(child, WM_MOUSEMOVE, 0, p);
+        SendMessageW(child, WM_LBUTTONDOWN, MK_LBUTTON, p);
+        SendMessageW(child, WM_LBUTTONUP, 0, p);
         pump(250);
     };
+    auto hoverAt = [&](double lx, double ly) {
+        SendMessageW(child, WM_MOUSEMOVE, 0, MAKELPARAM(int(lx * sc), int(ly * sc)));
+        pump(150);
+    };
 
-    // Next patch (arrow at the top right) three times -> "Strings 1983".
-    for (int i = 0; i < 4; ++i) click(w - 16 - 14, 29);
-    printf("program after 4 clicks: %.3f\n", ctrl->getParamNormalized(102));
-    saveBmp(top, w, h, prefix + L"_2_patch.bmp");
+    // 1. Open the OSC 1 wave dropdown, hover "Pulse", screenshot, pick it.
+    click(58, 124);
+    hoverAt(70, 186);
+    saveBmp(top, w, h, prefix + L"_2_wave_dropdown.bmp");
+    click(70, 186);
+    printf("osc1 wave after picking Pulse: %.3f (expect 0.333)\n", ctrl->getParamNormalized(1));
 
-    // Drag the Cutoff knob up (row 2, second knob) and hover it.
-    // Row 2 has 13 cells stretched to the widest row (14 cells).
-    const double cell2 = 64 + (w - 32 - (13 * 64 + 3 * 20 + 2 * 10)) / 13.0;
-    const int cx = int(16 + 10 + cell2 * 1.5), cy = 58 + 16 + 116 + 10 + 50;
-    const double before = ctrl->getParamNormalized(12);
-    SendMessageW(child, WM_LBUTTONDOWN, MK_LBUTTON, MAKELPARAM(cx, cy));
-    for (int dy = 0; dy <= 60; dy += 10) { SendMessageW(child, WM_MOUSEMOVE, MK_LBUTTON, MAKELPARAM(cx, cy - dy)); pump(30); }
-    printf("cutoff %.3f -> %.3f (while dragging)\n", before, ctrl->getParamNormalized(12));
-    saveBmp(top, w, h, prefix + L"_3_drag.bmp");
-    SendMessageW(child, WM_LBUTTONUP, 0, MAKELPARAM(cx, cy - 60));
-    pump(100);
+    // 2. Zoom dropdown -> 150%: the view asks for a new size.
+    click(677, 29);
+    saveBmp(top, w, h, prefix + L"_3_zoom_dropdown.bmp");
+    click(677, 115);
+    view->getSize(&r);
+    const int w2 = r.getWidth(), h2 = r.getHeight();
+    printf("size after choosing 150%%: %dx%d\n", w2, h2);
+    SetWindowPos(top, nullptr, 0, 0, w2, h2, SWP_NOZORDER | SWP_NOMOVE);
+    pump(300);
+    sc = w2 / 1038.0;
+    saveBmp(top, w2, h2, prefix + L"_4_zoom150.bmp");
 
-    // Click the Voice Mode selector (row 3, VOICE section first control) -> Mono.
-    const double cell3 = 64 + (w - 32 - (11 * 64 + 2 * 20 + 1 * 10)) / 11.0;
-    const int vx = int(16 + (5 * cell3 + 20) + 10 + 10 + cell3 / 2), vy = 58 + 16 + 2 * (116 + 10) + 50;
-    click(vx, vy);
-    printf("voice mode now %.3f\n", ctrl->getParamNormalized(31));
-    saveBmp(top, w, h, prefix + L"_4_mode.bmp");
+    // 3. Patch dropdown at 150%: open, hover 5th patch, screenshot, pick it.
+    click(872, 29);
+    hoverAt(872, 50 + 4 * 26 + 13);
+    saveBmp(top, w2, h2, prefix + L"_5_patch_dropdown.bmp");
+    click(872, 50 + 4 * 26 + 13);
+    printf("program after picking 5th patch: %.3f (expect 0.500)\n", ctrl->getParamNormalized(102));
+
+    // 4. Restore 125% so the next run starts from the default.
+    click(677, 29);
+    click(677, 50 + 1 * 26 + 13);
+    view->getSize(&r);
+    printf("size after choosing 125%%: %dx%d\n", r.getWidth(), r.getHeight());
 
     view->removed();
     view->release();

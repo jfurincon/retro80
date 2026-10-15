@@ -2,7 +2,7 @@
 
 An 80s-style polysynth (keys, pads, leads) as a VST3 instrument, built on the Steinberg VST3 SDK.
 
-**Status: Phase 2 (core engine) — v0.2.0**
+**Status: Phase 2 (core engine) — v0.2.1**
 
 ## Sound engine
 
@@ -22,10 +22,13 @@ Use the arrows at the top right of the panel.
 
 ## Panel tips
 
+- **Size:** pick 100–200% from the zoom menu at the top (default 125%). Your choice is remembered for new instances (`%APPDATA%\Retro80\settings.txt`).
+- **Patches:** arrows to step, or click the patch name for the full list.
+- **Wave / Mode / Chorus:** click to open a dropdown (wave menus show the shapes; the Pulse icon follows the PW knob).
 - Drag knobs up/down; hold **Shift** for fine control.
 - **Double-click** (or Ctrl+click) a knob to reset it.
 - Mouse wheel nudges the control under the cursor.
-- Selectors (Wave, Mode, Chorus): left-click = next, right-click = previous.
+- Mouse wheel over a selector steps through its options.
 
 ## Install in FL Studio (Windows)
 
