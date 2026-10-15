@@ -1,0 +1,34 @@
+name: Build Windows VST3
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  windows-vst3:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install cross-compiler
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends gcc-mingw-w64-x86-64 g++-mingw-w64-x86-64 ninja-build cmake
+
+      - name: Build Retro80.vst3 (Windows x64)
+        run: ./scripts/build-windows.sh
+
+      - name: Engine tests (aliasing, arp timing, FX, CPU)
+        run: |
+          g++ -O2 -std=c++17 -Isource tests/render_test.cpp -o render_test
+          mkdir -p test-out && ./render_test test-out
+
+      - name: Upload plugin
+        uses: actions/upload-artifact@v4
+        with:
+          name: Retro80-windows-vst3
+          path: build-win/VST3/Release/Retro80.vst3

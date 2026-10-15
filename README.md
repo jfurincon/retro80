@@ -63,3 +63,7 @@ Output: `build-win/VST3/Release/Retro80.vst3`.
 - `source/editor/` – Windows control panel (Win32 + GDI+)
 - `tests/render_test.cpp` – offline renders, aliasing and CPU checks
 - `tests/editor_snapshot.cpp` – loads the plugin like a DAW (processor + panel), plays notes, clicks through the panel and saves screenshots
+
+## Automatic builds
+
+Every push to `main` builds the Windows plugin on GitHub (Actions tab → latest run → **Retro80-windows-vst3** download) and runs the engine tests.
