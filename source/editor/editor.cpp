@@ -684,7 +684,6 @@ struct Editor::Impl {
             case WM_LBUTTONDOWN: {
                 int x, y;
                 logical(lp, x, y);
-                SetFocus(hwnd);
                 if (popup.kind != PopupKind::None) {  // any click closes the dropdown
                     choosePopupItem(popupItemAt(float(x), float(y)));
                     return 0;
@@ -758,8 +757,18 @@ struct Editor::Impl {
                     invalidate();
                 }
                 return 0;
-            case WM_KEYDOWN:
-                if (wp == VK_ESCAPE && popup.kind != PopupKind::None) { popup.kind = PopupKind::None; invalidate(); return 0; }
+            // The panel never takes keyboard focus, so FL's typing keyboard keeps
+            // playing notes. If keys reach us anyway, hand focus and the key back.
+            case WM_SETFOCUS:
+                if (HWND parent = GetParent(hwnd)) SetFocus(parent);
+                return 0;
+            case WM_KEYDOWN: case WM_KEYUP: case WM_SYSKEYDOWN: case WM_SYSKEYUP: case WM_CHAR:
+                if (msg == WM_KEYDOWN && wp == VK_ESCAPE && popup.kind != PopupKind::None) {
+                    popup.kind = PopupKind::None;
+                    invalidate();
+                    return 0;
+                }
+                if (HWND parent = GetParent(hwnd)) return SendMessageW(parent, msg, wp, lp);
                 break;
             case WM_MOUSEWHEEL: {
                 if (popup.kind != PopupKind::None) return 0;

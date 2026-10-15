@@ -2,7 +2,7 @@
 
 An 80s-style polysynth (keys, pads, leads) as a VST3 instrument, built on the Steinberg VST3 SDK.
 
-**Status: Phase 2 (core engine) — v0.2.1**
+**Status: Phase 2 (core engine) — v0.2.2**
 
 ## Sound engine
 
