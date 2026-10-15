@@ -10,7 +10,7 @@ if(NOT EXISTS "${vst3sdk_SOURCE_DIR}/CMakeLists.txt")
     message(FATAL_ERROR "VST3 SDK missing. Run: git submodule update --init --recursive")
 endif()
 
-project(Retro80 VERSION 0.1.0 LANGUAGES C CXX)
+project(Retro80 VERSION 0.2.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -33,6 +33,10 @@ smtg_enable_vst3_sdk()
 
 smtg_add_vst3plugin(Retro80
     source/ids.h
+    source/params.h
+    source/presets.h
+    source/state.h
+    source/dsp/building_blocks.h
     source/dsp/engine.h
     source/processor.h
     source/processor.cpp
@@ -41,6 +45,11 @@ smtg_add_vst3plugin(Retro80
     source/entry.cpp
 )
 target_link_libraries(Retro80 PRIVATE sdk)
+
+if(WIN32)
+    target_sources(Retro80 PRIVATE source/editor/editor.h source/editor/editor.cpp)
+    target_link_libraries(Retro80 PRIVATE gdiplus user32 gdi32)
+endif()
 
 if(MINGW)
     # Self-contained DLL: no MinGW runtime DLLs needed on the user's PC.
@@ -51,4 +60,11 @@ endif()
 if(NOT CMAKE_CROSSCOMPILING)
     add_executable(render_test tests/render_test.cpp)
     target_include_directories(render_test PRIVATE source)
+endif()
+
+# Windows-only test host that opens the editor and saves screenshots.
+if(WIN32 AND RETRO80_BUILD_TESTS)
+    add_executable(editor_snapshot tests/editor_snapshot.cpp ${vst3sdk_SOURCE_DIR}/public.sdk/source/vst/vstinitiids.cpp)
+    target_link_libraries(editor_snapshot PRIVATE pluginterfaces user32 gdi32)
+    target_link_options(editor_snapshot PRIVATE -municode -static)
 endif()

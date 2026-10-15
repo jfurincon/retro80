@@ -1,8 +1,10 @@
 #pragma once
 
 #include "public.sdk/source/vst/vstaudioeffect.h"
+
 #include "dsp/engine.h"
 #include "ids.h"
+#include "state.h"
 
 namespace retro80 {
 
@@ -25,12 +27,14 @@ public:
     Steinberg::tresult PLUGIN_API process(Steinberg::Vst::ProcessData& data) override;
     Steinberg::tresult PLUGIN_API setState(Steinberg::IBStream* state) override;
     Steinberg::tresult PLUGIN_API getState(Steinberg::IBStream* state) override;
+    Steinberg::uint32 PLUGIN_API getLatencySamples() override { return Engine::kLatency; }
 
 private:
     void handleParameterChanges(Steinberg::Vst::IParameterChanges* changes);
+    void applyPatchToEngine();
 
     Engine engine_;
-    double volume_ = kVolumeDefault;
+    PatchArray patch_ = defaultPatch();
 };
 
 } // namespace retro80

@@ -1,11 +1,11 @@
 #include "processor.h"
-#include "ids.h"
+#include "presets.h"
 
-#include "base/source/fstreamer.h"
 #include "pluginterfaces/vst/ivstevents.h"
 #include "pluginterfaces/vst/ivstparameterchanges.h"
 
 #include <algorithm>
+#include <cmath>
 
 using namespace Steinberg;
 using namespace Steinberg::Vst;
@@ -22,7 +22,7 @@ tresult PLUGIN_API Processor::initialize(FUnknown* context) {
 
     addAudioOutput(STR16("Stereo Out"), SpeakerArr::kStereo);
     addEventInput(STR16("MIDI In"), 16);
-    engine_.setGain(volumeToGain(volume_));
+    applyPatchToEngine();
     return kResultOk;
 }
 
@@ -40,13 +40,16 @@ tresult PLUGIN_API Processor::canProcessSampleSize(int32 symbolicSampleSize) {
 
 tresult PLUGIN_API Processor::setupProcessing(ProcessSetup& setup) {
     engine_.setSampleRate(setup.sampleRate);
-    engine_.setGain(volumeToGain(volume_));
     return AudioEffect::setupProcessing(setup);
 }
 
 tresult PLUGIN_API Processor::setActive(TBool state) {
     if (state) engine_.reset();
     return AudioEffect::setActive(state);
+}
+
+void Processor::applyPatchToEngine() {
+    for (int i = 0; i < kNumPatchParams; ++i) engine_.setParam(i, toPlain(kParamDefs[i], patch_[i]));
 }
 
 void Processor::handleParameterChanges(IParameterChanges* changes) {
@@ -58,13 +61,22 @@ void Processor::handleParameterChanges(IParameterChanges* changes) {
         int32 offset = 0;
         ParamValue value = 0;
         if (queue->getPoint(queue->getPointCount() - 1, offset, value) != kResultTrue) continue;
-        switch (queue->getParameterId()) {
-            case kParamVolume:
-                volume_ = value;
-                engine_.setGain(volumeToGain(value));
-                break;
-            default:
-                break;
+
+        const ParamID id = queue->getParameterId();
+        if (id < static_cast<ParamID>(kNumPatchParams)) {
+            patch_[id] = value;
+            engine_.setParam(id, toPlain(kParamDefs[id], value));
+        } else if (id == kPitchBend) {
+            engine_.setPitchBend(static_cast<float>(value * 2.0 - 1.0));
+        } else if (id == kModWheel) {
+            engine_.setModWheel(static_cast<float>(value));
+        } else if (id == kSustainPedal) {
+            engine_.setSustainPedal(value >= 0.5);
+        } else if (id == kProgram) {
+            const int index = static_cast<int>(std::lround(value * (kNumFactoryPatches - 1)));
+            const auto p = patchNormalized(index);
+            std::copy(p.begin(), p.end(), patch_.begin());
+            applyPatchToEngine();
         }
     }
 }
@@ -72,7 +84,7 @@ void Processor::handleParameterChanges(IParameterChanges* changes) {
 tresult PLUGIN_API Processor::process(ProcessData& data) {
     handleParameterChanges(data.inputParameterChanges);
 
-    if (data.numOutputs < 1 || data.numSamples <= 0) return kResultOk; // parameter flush
+    if (data.numOutputs < 1 || data.numSamples <= 0) return kResultOk;  // parameter flush
 
     AudioBusBuffers& out = data.outputs[0];
     if (out.numChannels < 2) return kResultOk;
@@ -117,20 +129,15 @@ tresult PLUGIN_API Processor::process(ProcessData& data) {
 }
 
 tresult PLUGIN_API Processor::setState(IBStream* state) {
-    if (!state) return kResultFalse;
-    IBStreamer streamer(state, kLittleEndian);
-    double v = 0;
-    if (!streamer.readDouble(v)) return kResultFalse;
-    volume_ = std::clamp(v, 0.0, 1.0);
-    engine_.setGain(volumeToGain(volume_));
+    PatchArray p;
+    if (!readState(state, p)) return kResultFalse;
+    patch_ = p;
+    applyPatchToEngine();
     return kResultOk;
 }
 
 tresult PLUGIN_API Processor::getState(IBStream* state) {
-    if (!state) return kResultFalse;
-    IBStreamer streamer(state, kLittleEndian);
-    streamer.writeDouble(volume_);
-    return kResultOk;
+    return writeState(state, patch_) ? kResultOk : kResultFalse;
 }
 
 } // namespace retro80
