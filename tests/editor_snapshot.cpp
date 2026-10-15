@@ -26,7 +26,7 @@ typedef bool(PLUGIN_API* InitDllProc)();
 
 static void pumpOnce() {
     MSG msg;
-    while (PeekMessageW(&msg, nullptr, 0, 0, PM_REMOVE)) {
+    for (int n = 0; n < 200 && PeekMessageW(&msg, nullptr, 0, 0, PM_REMOVE); ++n) {
         TranslateMessage(&msg);
         DispatchMessageW(&msg);
     }
@@ -66,6 +66,7 @@ static bool saveBmp(HWND hwnd, int w, int h, const std::wstring& path) {
 }
 
 int wmain(int argc, wchar_t** argv) {
+    setvbuf(stdout, nullptr, _IONBF, 0);
     if (argc < 3) return 2;
     HMODULE lib = LoadLibraryW(argv[1]);
     if (!lib) { printf("LoadLibrary failed %lu\n", GetLastError()); return 1; }
@@ -162,23 +163,29 @@ int wmain(int argc, wchar_t** argv) {
     run(700);
     saveBmp(top, w, h, prefix + L"_2_synth_live.bmp");
     note(45, false);
-    run(600);
+    run(400);
+
+    // Click the OSC 2 title: section switches off and dims.
+    click(300, 84);
+    printf("osc2 on after title click = %.0f (expect 0)\n", ctrl->getParamNormalized(78));
+    saveBmp(top, w, h, prefix + L"_3_osc2_off.bmp");
+    click(300, 84);
+    printf("osc2 on after second click = %.0f (expect 1)\n", ctrl->getParamNormalized(78));
+
+    // Patch browser: open, hover "Toy Box" (Keys column, 7th), screenshot, pick it.
+    printf("step: open browser\n");
+    click(980, 29);
+    printf("step: browser open, hovering\n");
+    SendMessageW(child, WM_MOUSEMOVE, 0, MAKELPARAM(int(86 * sc), int(268 * sc)));
+    run(150);
+    printf("step: screenshot\n");
+    saveBmp(top, w, h, prefix + L"_4_patch_browser.bmp");
+    printf("step: pick\n");
+    click(86, 268);
+    printf("program = %.4f (Toy Box = %.4f)\n", ctrl->getParamNormalized(102), 7.0 / 42.0);
 
     click(379, 29);  // MOD / ARP / FX tab
-    saveBmp(top, w, h, prefix + L"_3_mod_page.bmp");
-
-    const double cell = (1104 - 20) / 16.0;
-    click(26 + 2.25 * cell, 250);  // Mod 1 destination dropdown
-    SendMessageW(child, WM_MOUSEMOVE, 0, MAKELPARAM(int(26 + 2.25 * cell) * sc, int(229 * sc)));
-    run(150);
-    saveBmp(top, w, h, prefix + L"_4_matrix_dropdown.bmp");
-    click(26 + 2.25 * cell, 229);
-    printf("mod 1 dest = %.3f (Cutoff = %.3f)\n", ctrl->getParamNormalized(50), 4.0 / 12.0);
-
-    const double c1 = (1104 - 80) / 13.5;
-    click(86 + 7.5 * c1, 124);  // Arp on/off
-    printf("arp = %.0f\n", ctrl->getParamNormalized(61));
-    saveBmp(top, w, h, prefix + L"_5_arp_on.bmp");
+    saveBmp(top, w, h, prefix + L"_5_mod_page.bmp");
 
     click(214 + 43, 29);  // back to SYNTH
     view->removed();

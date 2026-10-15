@@ -13,7 +13,7 @@
 namespace retro80 {
 
 constexpr Steinberg::int32 kStateMagic = 0x52383050;  // 'R80P'
-constexpr Steinberg::int32 kStateVersion = 2;
+constexpr Steinberg::int32 kStateVersion = 3;
 
 using PatchArray = std::array<double, kNumPatchParams>;
 
@@ -52,6 +52,7 @@ inline bool readState(Steinberg::IBStream* stream, PatchArray& p) {
         double volume = 0;
         if (!s.readDouble(volume)) return false;
         p[kVolume] = std::clamp(volume, 0.0, 1.0);
+        p[kOsc1Wave] = 0.0;  // Saw
         return true;
     }
     Steinberg::int32 version = 0, count = 0;
@@ -62,6 +63,8 @@ inline bool readState(Steinberg::IBStream* stream, PatchArray& p) {
         if (!s.readInt32(id) || !s.readDouble(value)) return false;
         if (id >= 0 && id < kNumPatchParams) p[id] = std::clamp(value, 0.0, 1.0);
     }
+    // v2 and older: OSC 1 had 4 waves (Sine was added as #5). Keep the same wave.
+    if (version < 3) p[kOsc1Wave] = std::round(p[kOsc1Wave] * 3.0) / 4.0;
     return true;
 }
 

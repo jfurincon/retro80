@@ -211,10 +211,12 @@ int main(int argc, char** argv) {
         e.reset();
         const std::string name = kFactoryPatches[p].name;
         std::vector<Ev> ev;
-        if (name == "Synthwave Lead" || name == "Square Solo" || name == "Sync Lead") ev = leadPhrase();
-        else if (name == "Arp Nightdrive") ev = arpPhrase();
-        else if (name == "Analog Bass") ev = bassPhrase();
-        else if (name == "Bright Keys" || name == "Poly Pluck") ev = keysPhrase();
+        const std::string cat = kFactoryPatches[p].category;
+        const bool arp = e.param(kArpOn) > 0.5f;
+        if (cat == "Leads") ev = leadPhrase();
+        else if (cat == "Bass") ev = arp ? arpPhrase() : bassPhrase();
+        else if (arp) ev = arpPhrase();
+        else if (cat == "Keys" || cat == "Arps & Plucks") ev = keysPhrase();
         else ev = chordPhrase();
         std::vector<float> L, R;
         double len = 0;

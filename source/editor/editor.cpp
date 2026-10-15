@@ -41,6 +41,7 @@ struct SectionDef {
     int accent;  // index into kAccents
     std::vector<Item> items;
     float scopeCells = 0.0f;  // > 0: this section is the wave display
+    ParamId enable = kNumParams;  // clicking the title toggles this (kNumParams = none)
 };
 
 using Page = std::vector<std::vector<SectionDef>>;
@@ -49,39 +50,40 @@ const std::vector<Page> kPages = {
     // ---- SYNTH
     {
         {
-            {L"OSC 1", 0, {{kOsc1Wave}, {kOsc1PW}, {kOsc1PWM}}},
-            {L"OSC 2", 0, {{kOsc2Wave}, {kOsc2Semi}, {kOsc2Fine}, {kOscSync}, {kXMod}, {kOsc2Sweep}}},
+            {L"OSC 1", 0, {{kOsc1Wave}, {kOsc1PW}, {kOsc1PWM}}, 0, kOsc1On},
+            {L"OSC 2", 0, {{kOsc2Wave}, {kOsc2Semi}, {kOsc2Fine}, {kOscSync}, {kXMod}, {kOsc2Sweep}}, 0, kOsc2On},
             {L"MIXER", 1, {{kMixOsc1}, {kMixOsc2}, {kMixSub}, {kMixNoise}, {kVolume}}},
         },
         {
-            {L"FILTER", 1, {{kHpf}, {kCutoff}, {kReso}, {kFiltEnvAmt}, {kFiltLfoAmt}, {kFiltKeytrack}, {kFiltVel}}},
+            {L"FILTER", 1, {{kHpf}, {kCutoff}, {kReso}, {kFiltEnvAmt}, {kFiltLfoAmt}, {kFiltKeytrack}, {kFiltVel}}, 0, kFilterOn},
             {L"FILTER ENV", 2, {{kFEnvA}, {kFEnvD}, {kFEnvS}, {kFEnvR}}},
             {L"WAVE", 3, {}, 5.0f},
         },
         {
             {L"AMP ENV", 2, {{kAEnvA}, {kAEnvD}, {kAEnvS}, {kAEnvR}, {kAmpVel}}},
-            {L"LFO 1", 3, {{kLfoWave}, {kLfoRate}, {kLfoSync}, {kLfoDelay}, {kLfoPitch}}},
+            {L"LFO 1", 3, {{kLfoWave}, {kLfoRate}, {kLfoSync}, {kLfoDelay}, {kLfoPitch}}, 0, kLfo1On},
             {L"VOICE", 0, {{kVoiceMode}, {kUnisonVoices}, {kUnisonDetune}, {kGlide}, {kBendRange}, {kDrift}}},
         },
     },
     // ---- MOD / ARP / FX
     {
         {
-            {L"LFO 2", 3, {{kLfo2Wave}, {kLfo2Rate}, {kLfo2Sync}}},
-            {L"MOD ENV", 2, {{kMEnvA}, {kMEnvD}, {kMEnvS}, {kMEnvR}}},
-            {L"ARPEGGIATOR", 0, {{kArpOn}, {kArpMode, 1.5f}, {kArpRate}, {kArpOctaves}, {kArpGate}, {kArpLatch}}},
+            {L"LFO 2", 3, {{kLfo2Wave}, {kLfo2Rate}, {kLfo2Sync}}, 0, kLfo2On},
+            {L"MOD ENV", 2, {{kMEnvA}, {kMEnvD}, {kMEnvS}, {kMEnvR}}, 0, kMEnvOn},
+            {L"ARPEGGIATOR", 0, {{kArpMode, 1.5f}, {kArpRate}, {kArpOctaves}, {kArpGate}, {kArpLatch}}, 0, kArpOn},
         },
         {
             {L"MOD MATRIX", 1,
              {{kMod1Src, 1.5f}, {kMod1Dst, 1.5f}, {kMod1Amt},
               {kMod2Src, 1.5f}, {kMod2Dst, 1.5f}, {kMod2Amt},
               {kMod3Src, 1.5f}, {kMod3Dst, 1.5f}, {kMod3Amt},
-              {kMod4Src, 1.5f}, {kMod4Dst, 1.5f}, {kMod4Amt}}},
+              {kMod4Src, 1.5f}, {kMod4Dst, 1.5f}, {kMod4Amt}},
+             0, kMatrixOn},
         },
         {
-            {L"CHORUS", 3, {{kChorus}}},
-            {L"DELAY", 2, {{kDlyMix}, {kDlyTime}, {kDlySync}, {kDlyFeedback}, {kDlyTone}, {kDlyPingPong}}},
-            {L"REVERB", 1, {{kRevMix}, {kRevDecay}, {kRevDamp}, {kRevPreDelay}}},
+            {L"CHORUS", 3, {{kChorus}}, 0, kChorusOn},
+            {L"DELAY", 2, {{kDlyMix}, {kDlyTime}, {kDlySync}, {kDlyFeedback}, {kDlyTone}, {kDlyPingPong}}, 0, kDlyOn},
+            {L"REVERB", 1, {{kRevMix}, {kRevDecay}, {kRevDamp}, {kRevPreDelay}}, 0, kRevOn},
         },
     },
 };
@@ -131,11 +133,11 @@ bool isMatrix(ParamId id) { return id >= kMod1Src && id <= kMod4Amt; }
 enum class Icon { None, Saw, Pulse, SawPulse, Triangle, Sine, Square, SawDown, Random };
 
 Icon iconFor(ParamId id, int index) {
-    static const Icon osc1[] = {Icon::Saw, Icon::Pulse, Icon::SawPulse, Icon::Triangle};
+    static const Icon osc1[] = {Icon::Saw, Icon::Pulse, Icon::SawPulse, Icon::Triangle, Icon::Sine};
     static const Icon osc2[] = {Icon::Saw, Icon::Square, Icon::Triangle, Icon::Sine};
     static const Icon lfo[] = {Icon::Triangle, Icon::Sine, Icon::Square, Icon::SawDown, Icon::Random};
     switch (id) {
-        case kOsc1Wave: return index >= 0 && index < 4 ? osc1[index] : Icon::None;
+        case kOsc1Wave: return index >= 0 && index < 5 ? osc1[index] : Icon::None;
         case kOsc2Wave: return index >= 0 && index < 4 ? osc2[index] : Icon::None;
         case kLfoWave:
         case kLfo2Wave: return index >= 0 && index < 5 ? lfo[index] : Icon::None;
@@ -205,6 +207,8 @@ struct SectionBox {
     int accent;
     RECT r;
     bool scope;
+    ParamId enable;
+    RECT titleHit;
 };
 
 std::wstring widen(const char* s) {
@@ -313,7 +317,10 @@ struct Editor::Impl {
         int hover = -1;
         int accent = 3;
         Gdiplus::RectF rect;
-        Gdiplus::RectF itemRect(int i) const { return {rect.X + 4, rect.Y + 4 + i * kItemH, rect.Width - 8, kItemH}; }
+        std::vector<Gdiplus::RectF> rects;  // one per item
+        struct Header { std::wstring text; Gdiplus::RectF r; };
+        std::vector<Header> headers;
+        Gdiplus::RectF itemRect(int i) const { return rects[i]; }
     } popup;
 
     std::unique_ptr<Gdiplus::Bitmap> backbuffer;
@@ -357,7 +364,7 @@ struct Editor::Impl {
                 for (const auto& it : sec.items) units += it.w;
                 const double w = units * cell + 2 * kSectionPad;
                 const RECT r = {int(x), y, int(x + w), y + kSectionH};
-                sections.push_back({sec.title, sec.accent, r, sec.scopeCells > 0});
+                sections.push_back({sec.title, sec.accent, r, sec.scopeCells > 0, sec.enable, {r.left, r.top, r.right, r.top + 22}});
                 if (sec.scopeCells > 0) {
                     scopeRect = {r.left + 10, r.top + 26, r.right - 10, r.bottom - 10};
                     hasScope = true;
@@ -473,6 +480,7 @@ struct Editor::Impl {
                 if (std::fabs(kZoomSteps[i] - zoom) < 0.01f) popup.selected = i;
             }
         }
+        if (kind == PopupKind::Patch) { layoutPatchBrowser(anchor); invalidate(); return; }
         const bool icons = kind == PopupKind::Param && hasIcons(id);
         const float w = std::max(float(anchor.right - anchor.left), icons ? 136.0f : 124.0f);
         float h = popup.items.size() * kItemH + 8;
@@ -484,8 +492,41 @@ struct Editor::Impl {
             if (y < 4) y = std::max(4.0f, height - 4 - h);
         }
         popup.rect = {x, y, w, h};
+        for (size_t i = 0; i < popup.items.size(); ++i) popup.rects.push_back({x + 4, y + 4 + i * kItemH, w - 8, kItemH});
         popup.hover = popup.selected;
         invalidate();
+    }
+
+    // Patch browser: "Init" on top, then one column per category.
+    void layoutPatchBrowser(const RECT& anchor) {
+        constexpr float colW = 150.0f, rowH = 24.0f, pad = 10.0f;
+        int rows = 0;
+        for (int c = 0; c < kNumPatchCategories; ++c) {
+            int n = 0;
+            for (int i = 0; i < kNumFactoryPatches; ++i) n += std::strcmp(kFactoryPatches[i].category, kPatchCategories[c]) == 0;
+            rows = std::max(rows, n);
+        }
+        const float w = kNumPatchCategories * colW + 2 * pad;
+        const float h = pad + 26 + 8 + 22 + rows * rowH + pad;
+        const float x = std::clamp(float(anchor.right) - w, 4.0f, width - w - 4.0f);
+        const float y = float(anchor.bottom) + 4;
+        popup.rect = {x, y, w, h};
+        popup.rects.assign(popup.items.size(), Gdiplus::RectF(0, 0, 0, 0));
+        int count[kNumPatchCategories] = {};
+        for (int i = 0; i < kNumFactoryPatches; ++i) {
+            const char* cat = kFactoryPatches[i].category;
+            int col = -1;
+            for (int c = 0; c < kNumPatchCategories; ++c) if (std::strcmp(cat, kPatchCategories[c]) == 0) col = c;
+            if (col < 0) {  // Init
+                popup.rects[i] = {x + pad, y + pad, colW - 8, 26};
+                continue;
+            }
+            popup.rects[i] = {x + pad + col * colW, y + pad + 26 + 8 + 22 + count[col] * rowH, colW - 8, rowH};
+            ++count[col];
+        }
+        for (int c = 0; c < kNumPatchCategories; ++c)
+            popup.headers.push_back({widen(kPatchCategories[c]), {x + pad + c * colW + 8, y + pad + 26 + 8, colW - 16, 22}});
+        popup.hover = popup.selected;
     }
 
     void choosePopupItem(int i) {
@@ -812,6 +853,9 @@ struct Editor::Impl {
             if (w1 == 1 || w1 == 2) o1 += (q1 < pw ? 1.0f : -1.0f) - (2 * pw - 1);
             if (w1 == 2) o1 *= 0.7f;
             if (w1 == 3) o1 = 2 * std::fabs(2 * q1 - 1) - 1;
+            if (w1 == 4) o1 = std::sin(2 * 3.14159265f * q1);
+            if (plain(kOsc1On) < 0.5f) o1 = 0;
+            if (plain(kOsc2On) < 0.5f) o2 = 0;
             const float sub = (t < 1.0f) ? 1.0f : -1.0f;
             out[i] = o1 * m1 + o2 * m2 + sub * ms;
         }
@@ -836,6 +880,11 @@ struct Editor::Impl {
         g.DrawPath(&border, &p);
 
         const bool icons = popup.kind == PopupKind::Param && hasIcons(popup.id);
+        for (const auto& hd : popup.headers) {
+            text(g, hd.text, fontTiny.get(), acc, hd.r, Gdiplus::StringAlignmentNear);
+            Gdiplus::Pen line(withAlpha(acc, 90), 1.0f);
+            g.DrawLine(&line, hd.r.X, hd.r.Y + hd.r.Height - 1, hd.r.X + hd.r.Width, hd.r.Y + hd.r.Height - 1);
+        }
         for (int i = 0; i < static_cast<int>(popup.items.size()); ++i) {
             const Gdiplus::RectF ir = popup.itemRect(i);
             const bool sel = i == popup.selected;
@@ -892,8 +941,22 @@ struct Editor::Impl {
             Gdiplus::Pen border(kBorder, 1);
             g.DrawPath(&border, &p);
             Gdiplus::SolidBrush accent(kAccents[s.accent]);
-            g.FillRectangle(&accent, float(s.r.left + 10), float(s.r.top + 9), 3.0f, 10.0f);
-            g.DrawString(s.title, -1, fontSection.get(), Gdiplus::PointF(float(s.r.left + 16), float(s.r.top + 6)), &accent);
+            if (s.enable == kNumParams) {
+                g.FillRectangle(&accent, float(s.r.left + 10), float(s.r.top + 9), 3.0f, 10.0f);
+                g.DrawString(s.title, -1, fontSection.get(), Gdiplus::PointF(float(s.r.left + 16), float(s.r.top + 6)), &accent);
+            } else {
+                // Click-to-toggle title: LED + name.
+                const bool on = listIndex(s.enable) != 0;
+                const float lx = s.r.left + 13.0f, ly = s.r.top + 13.0f;
+                if (on) {
+                    Gdiplus::SolidBrush glow(withAlpha(kAccents[s.accent], 70));
+                    g.FillEllipse(&glow, lx - 6.5f, ly - 6.5f, 13.0f, 13.0f);
+                }
+                Gdiplus::SolidBrush led(on ? kAccents[s.accent] : kTrack);
+                g.FillEllipse(&led, lx - 4.0f, ly - 4.0f, 8.0f, 8.0f);
+                Gdiplus::SolidBrush name(on ? kAccents[s.accent] : kTextDim);
+                g.DrawString(s.title, -1, fontSection.get(), Gdiplus::PointF(float(s.r.left + 21), float(s.r.top + 6)), &name);
+            }
         }
         // Thin dividers between the four matrix slots.
         for (size_t i = 0; i < controls.size(); ++i) {
@@ -927,6 +990,16 @@ struct Editor::Impl {
                 centeredText(g, v, fontValue.get(), active ? kAccents[c.accent] : kTextDim, float(c.cx),
                              c.cy + 39.0f, c.cellW + 6.0f);
             }
+        }
+
+        // Switched-off sections: dim their contents.
+        for (const auto& s : sections) {
+            if (s.enable == kNumParams || listIndex(s.enable) != 0) continue;
+            Gdiplus::GraphicsPath p;
+            roundRect(p, float(s.r.left + 1), float(s.r.top + 22), float(s.r.right - s.r.left - 2),
+                      float(s.r.bottom - s.r.top - 23), 5);
+            Gdiplus::SolidBrush veil(withAlpha(kPanel, 175));
+            g.FillPath(&veil, &p);
         }
 
         paintScope(g);
@@ -976,7 +1049,7 @@ struct Editor::Impl {
         const float s = scale();
         RECT r = {static_cast<LONG>(scopeRect.left * s) - 2, static_cast<LONG>(scopeRect.top * s) - 2,
                   static_cast<LONG>(scopeRect.right * s) + 2, static_cast<LONG>(scopeRect.bottom * s) + 2};
-        if (popup.kind != PopupKind::None) { invalidate(); return; }
+        if (popup.kind != PopupKind::None) return;  // scope pauses while a menu is open
         InvalidateRect(hwnd, &r, FALSE);
     }
 
@@ -990,6 +1063,18 @@ struct Editor::Impl {
         switch (msg) {
             case WM_PAINT: onPaint(); return 0;
             case WM_ERASEBKGND: return 1;
+            case WM_SETCURSOR: {
+                POINT pt;
+                GetCursorPos(&pt);
+                ScreenToClient(hwnd, &pt);
+                const int x = static_cast<int>(pt.x / scale()), y = static_cast<int>(pt.y / scale());
+                for (const auto& sec : sections)
+                    if (sec.enable != kNumParams && inRect(sec.titleHit, x, y)) {
+                        SetCursor(LoadCursorW(nullptr, reinterpret_cast<LPCWSTR>(IDC_HAND)));
+                        return TRUE;
+                    }
+                break;
+            }
             case WM_TIMER:
                 if (wp == kTimerId) invalidateScope();  // keeps the preview animating too
                 return 0;
@@ -1001,6 +1086,11 @@ struct Editor::Impl {
                     return 0;
                 }
                 for (int t = 0; t < 2; ++t) if (inRect(tabs[t], x, y)) { setPage(t); return 0; }
+                for (const auto& sec : sections)
+                    if (sec.enable != kNumParams && inRect(sec.titleHit, x, y)) {
+                        setValue(sec.enable, listIndex(sec.enable) ? 0.0 : 1.0);
+                        return 0;
+                    }
                 if (inRect(prevPatch, x, y)) { setPatch(patchIndex() - 1); return 0; }
                 if (inRect(nextPatch, x, y)) { setPatch(patchIndex() + 1); return 0; }
                 if (inRect(patchBox, x, y)) { openPopup(PopupKind::Patch, patchBox, kProgram, 3); return 0; }

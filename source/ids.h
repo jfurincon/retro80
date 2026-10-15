@@ -3,8 +3,8 @@
 #include "pluginterfaces/base/funknown.h"
 #include "pluginterfaces/vst/vsttypes.h"
 
-#define RETRO80_VERSION_STR "0.3.0"
-#define RETRO80_VERSION_WSTR L"0.3.0"
+#define RETRO80_VERSION_STR "0.4.0"
+#define RETRO80_VERSION_WSTR L"0.4.0"
 #define RETRO80_NAME "Retro80"
 #define RETRO80_VENDOR "Retro80"
 #define RETRO80_URL ""

@@ -82,7 +82,7 @@ public:
                     stackSize_ = 0;
                 }
                 break;
-            case kChorus: chorus_.setMode(static_cast<int>(plain)); break;
+            case kChorus: case kChorusOn: chorus_.setMode(chorusMode()); break;
             case kGlide: updateGlide(); break;
             case kArpOn: {
                 const bool on = static_cast<int>(plain) != 0;
@@ -100,14 +100,14 @@ public:
             case kArpMode: case kArpRate: case kArpOctaves: case kArpGate: case kArpLatch:
                 updateArp();
                 break;
-            case kDlyMix: case kDlyTime: case kDlySync: case kDlyFeedback: case kDlyTone: case kDlyPingPong:
+            case kDlyMix: case kDlyTime: case kDlySync: case kDlyFeedback: case kDlyTone: case kDlyPingPong: case kDlyOn:
                 updateDelay();
                 break;
-            case kRevMix: case kRevDecay: case kRevDamp: case kRevPreDelay:
+            case kRevMix: case kRevDecay: case kRevDamp: case kRevPreDelay: case kRevOn:
                 updateReverb();
                 break;
             default:
-                if (id >= kMod1Src && id <= kMod4Amt) updateMatrix();
+                if ((id >= kMod1Src && id <= kMod4Amt) || id == kMatrixOn) updateMatrix();
                 break;
         }
         updateTargets();
@@ -210,16 +210,17 @@ public:
             const float vol = sVolume_.tick(), envAmt = sEnvAmt_.tick(), lfoAmt = sLfoAmt_.tick();
             c.xmod = sXMod_.tick();
             c.sweep = sSweep_.tick();
+            filterOnSmooth_ += ((p_[kFilterOn] > 0.5f ? 1.0f : 0.0f) - filterOnSmooth_) * 0.004f;
 
-            const float lfo1 = tickLfo(lfo1_, p_[kLfoWave], p_[kLfoRate], p_[kLfoSync], true);
-            const float lfo2 = tickLfo(lfo2_, p_[kLfo2Wave], p_[kLfo2Rate], p_[kLfo2Sync], false);
+            const float lfo1 = tickLfo(lfo1_, p_[kLfoWave], p_[kLfoRate], p_[kLfoSync], true) * (p_[kLfo1On] > 0.5f ? 1.0f : 0.0f);
+            const float lfo2 = tickLfo(lfo2_, p_[kLfo2Wave], p_[kLfo2Rate], p_[kLfo2Sync], false) * (p_[kLfo2On] > 0.5f ? 1.0f : 0.0f);
             c.lfo1 = lfo1;
             c.lfo2 = lfo2;
             c.pw = pw + pwm * 0.42f * lfo1;
             c.cutoffOct = std::log2(c.cutoff);
             c.envOct = envAmt * 8.0f;
             c.lfoOct = lfoAmt * 3.0f * lfo1;
-            c.vibratoSemi = lfo1 * p_[kLfoPitch] * 2.0f + lfo1_.raw * modWheel_ * 0.5f;
+            c.vibratoSemi = lfo1 * p_[kLfoPitch] * 2.0f + (p_[kLfo1On] > 0.5f ? lfo1_.raw : 0.0f) * modWheel_ * 0.5f;
             c.bendSemi = bend_ * p_[kBendRange];
 
             float accL[kOversample] = {0, 0}, accR[kOversample] = {0, 0};
@@ -401,6 +402,8 @@ private:
         if (--v.walkCounter <= 0) { v.walkCounter = static_cast<int>(sr_ * 0.5f); v.walkTarget = v.rng.bipolar(); }
         v.walk += (v.walkTarget - v.walk) * walkCoef_;
 
+        const float menv = p_[kMEnvOn] > 0.5f ? v.menv.value : 0.0f;
+
         // ---- modulation matrix
         float mPitch = 0, mOsc2 = 0, mPw = 0, mCut = 0, mReso = 0, mAmp = 0, mPan = 0, mX = 0;
         float m1 = 0, m2 = 0, mSub = 0, mNoise = 0;
@@ -410,7 +413,7 @@ private:
             switch (slot.src) {
                 case kSrcLfo1: src = c.lfo1; break;
                 case kSrcLfo2: src = c.lfo2; break;
-                case kSrcModEnv: src = v.menv.value; break;
+                case kSrcModEnv: src = menv; break;
                 case kSrcVelocity: src = v.velocity; break;
                 case kSrcModWheel: src = modWheel_; break;
                 case kSrcAftertouch: src = std::max(aftertouch_, v.pressure); break;
@@ -440,7 +443,7 @@ private:
         const float driftCents = drift * (4.0f * v.driftPitch + 5.0f * v.walk);
         const float semi = v.curSemi + c.bendSemi + c.vibratoSemi + mPitch + (v.detuneCents + driftCents) * 0.01f;
         v.inc1 = std::min(440.0f * std::exp2((semi - 69.0f) * (1.0f / 12.0f)) / osr_, 0.45f);
-        const float semi2 = semi + p_[kOsc2Semi] + p_[kOsc2Fine] * 0.01f + c.sweep * 36.0f * v.menv.value + mOsc2;
+        const float semi2 = semi + p_[kOsc2Semi] + p_[kOsc2Fine] * 0.01f + c.sweep * 36.0f * menv + mOsc2;
         v.inc2 = std::clamp(440.0f * std::exp2((semi2 - 69.0f) * (1.0f / 12.0f)) / osr_, 1.0e-6f, 0.45f);
 
         const float key = p_[kFiltKeytrack] * (v.curSemi - 60.0f) * (1.0f / 12.0f);
@@ -487,6 +490,8 @@ private:
         if (w1 == 1 || w1 == 2) o1 += pulse(t1, dt1, v.pw);
         if (w1 == 2) o1 *= 0.7f;
         if (w1 == 3) o1 = 2.0f * std::fabs(2.0f * t1 - 1.0f) - 1.0f;
+        if (w1 == 4) o1 = std::sin(2.0f * kPi * t1);
+        if (p_[kOsc1On] < 0.5f) o1 = 0.0f;
 
         // ---- SUB (square one octave down)
         const float subEdge = (t1 < dt1) ? v.subSign : -v.subSign;
@@ -504,13 +509,15 @@ private:
 
         // ---- OSC 2 (one sample behind, so its BLEP corrections can fix the
         // previous sample too: that is what makes hard sync clean)
-        const float o2 = tickOsc2(v, static_cast<int>(p_[kOsc2Wave]), p_[kOscSync] > 0.5f && wrapped1, d1);
+        float o2 = tickOsc2(v, static_cast<int>(p_[kOsc2Wave]), p_[kOscSync] > 0.5f && wrapped1, d1);
+        if (p_[kOsc2On] < 0.5f) o2 = 0.0f;
         v.osc2Out = o2;
 
         const float noise = v.rng.bipolar();
         const float mix = o1 * v.mix1 + o2 * v.mix2 + sub * v.mixSub + noise * v.mixNoise * 0.7f;
 
-        float y = v.filter.process(mix * 0.55f, v.filterG, v.k) * (1.0f / 0.55f);
+        const float filtered = v.filter.process(mix * 0.55f, v.filterG, v.k) * (1.0f / 0.55f);
+        float y = filtered + (mix - filtered) * (1.0f - filterOnSmooth_);
         y = v.hpf.process(y, c.hpG);
         const float velGain = 1.0f - p_[kAmpVel] * (1.0f - v.velocity);
         return y * ae * velGain * v.ampMul * kVoiceLevel;
@@ -680,7 +687,7 @@ private:
     void updateMatrix() {
         numSlots_ = 0;
         panModulated_ = false;
-        for (int s = 0; s < kNumModSlots; ++s) {
+        for (int s = 0; s < kNumModSlots && p_[kMatrixOn] > 0.5f; ++s) {
             const int src = static_cast<int>(p_[kMod1Src + 3 * s]);
             const int dst = static_cast<int>(p_[kMod1Dst + 3 * s]);
             const float amt = p_[kMod1Amt + 3 * s];
@@ -706,10 +713,14 @@ private:
         float seconds = p_[kDlyTime];
         if (sync > 0 && sync < countOf(kDelaySyncDivs))
             seconds = static_cast<float>(kDelaySyncBeats[sync] * 60.0 / tempo_);
-        delay_.setParams(p_[kDlyMix], std::min(seconds, 2.5f), p_[kDlyFeedback], p_[kDlyTone], p_[kDlyPingPong] > 0.5f);
+        delay_.setParams(p_[kDlyOn] > 0.5f ? p_[kDlyMix] : 0.0f, std::min(seconds, 2.5f), p_[kDlyFeedback], p_[kDlyTone], p_[kDlyPingPong] > 0.5f);
     }
 
-    void updateReverb() { reverb_.setParams(p_[kRevMix], p_[kRevDecay], p_[kRevDamp], p_[kRevPreDelay]); }
+    void updateReverb() {
+        reverb_.setParams(p_[kRevOn] > 0.5f ? p_[kRevMix] : 0.0f, p_[kRevDecay], p_[kRevDamp], p_[kRevPreDelay]);
+    }
+
+    int chorusMode() const { return p_[kChorusOn] > 0.5f ? static_cast<int>(p_[kChorus]) : 0; }
 
     void updateAll() {
         updateEnvelopes();
@@ -721,7 +732,8 @@ private:
         updateReverb();
         mode_ = static_cast<int>(p_[kVoiceMode]);
         arpOn_ = p_[kArpOn] > 0.5f;
-        chorus_.setMode(static_cast<int>(p_[kChorus]), true);
+        chorus_.setMode(chorusMode(), true);
+        filterOnSmooth_ = p_[kFilterOn] > 0.5f ? 1.0f : 0.0f;
         walkCoef_ = 1.0f - std::exp(-1.0f / (0.4f * sr_));
         lfoEdgeCoef_ = 1.0f - std::exp(-1.0f / (0.002f * sr_));
     }
@@ -744,7 +756,7 @@ private:
 
     int mode_ = 0;
     bool arpOn_ = false;
-    float glideCoef_ = 1.0f, walkCoef_ = 0.0f, lfoEdgeCoef_ = 1.0f;
+    float glideCoef_ = 1.0f, walkCoef_ = 0.0f, lfoEdgeCoef_ = 1.0f, filterOnSmooth_ = 1.0f;
     float bend_ = 0.0f, modWheel_ = 0.0f, aftertouch_ = 0.0f;
     bool sustainPedal_ = false;
     bool keyDown_[128] = {};

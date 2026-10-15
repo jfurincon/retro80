@@ -101,6 +101,18 @@ enum ParamId : uint32_t {
     kRevDamp,
     kRevPreDelay,
 
+    // ---- v0.4.0: section on/off (click a section title) ----
+    kOsc1On,
+    kOsc2On,
+    kFilterOn,
+    kLfo1On,
+    kLfo2On,
+    kMEnvOn,
+    kMatrixOn,
+    kChorusOn,
+    kDlyOn,
+    kRevOn,
+
     kNumParams,
 
     // Hidden, MIDI-mapped (not part of patches).
@@ -136,7 +148,7 @@ struct ParamDef {
 };
 
 // ---- choice labels ---------------------------------------------------------
-inline const char* const kOsc1Waves[] = {"Saw", "Pulse", "Saw+Pulse", "Triangle"};
+inline const char* const kOsc1Waves[] = {"Saw", "Pulse", "Saw+Pulse", "Triangle", "Sine"};
 inline const char* const kOsc2Waves[] = {"Saw", "Pulse", "Triangle", "Sine"};
 inline const char* const kLfoWaves[] = {"Triangle", "Sine", "Square", "Saw Down", "Random"};
 inline const char* const kVoiceModes[] = {"Poly", "Mono", "Unison"};
@@ -173,7 +185,7 @@ constexpr int countOf(const char* const (&)[N]) { return static_cast<int>(N); }
 inline const ParamDef kParamDefs[] = {
     {kVolume, "Master Volume", "Master", Scale::Linear, DisplayUnit::Volume, 0.0f, 1.0f, 0.70710678f},
 
-    {kOsc1Wave, "Osc 1 Wave", "Wave", Scale::List, DisplayUnit::None, 0, 3, 0, kOsc1Waves, countOf(kOsc1Waves)},
+    {kOsc1Wave, "Osc 1 Wave", "Wave", Scale::List, DisplayUnit::None, 0, 4, 0, kOsc1Waves, countOf(kOsc1Waves)},
     {kOsc1PW, "Osc 1 Pulse Width", "PW", Scale::Linear, DisplayUnit::Percent, 0.05f, 0.5f, 0.5f},
     {kOsc1PWM, "Osc 1 PWM (LFO)", "PWM", Scale::Linear, DisplayUnit::Percent, 0.0f, 1.0f, 0.0f},
     {kOsc2Wave, "Osc 2 Wave", "Wave", Scale::List, DisplayUnit::None, 0, 3, 0, kOsc2Waves, countOf(kOsc2Waves)},
@@ -263,6 +275,17 @@ inline const ParamDef kParamDefs[] = {
     {kRevDecay, "Reverb Decay", "Decay", Scale::Log, DisplayUnit::Seconds, 0.3f, 12, 2.5f},
     {kRevDamp, "Reverb Damping", "Damp", Scale::Linear, DisplayUnit::Percent, 0, 1, 0.4f},
     {kRevPreDelay, "Reverb Pre-Delay", "Pre-Dly", Scale::Linear, DisplayUnit::Seconds, 0, 0.2f, 0.02f},
+
+    {kOsc1On, "Osc 1 On", "Osc 1", Scale::List, DisplayUnit::None, 0, 1, 1, kOffOn, countOf(kOffOn)},
+    {kOsc2On, "Osc 2 On", "Osc 2", Scale::List, DisplayUnit::None, 0, 1, 1, kOffOn, countOf(kOffOn)},
+    {kFilterOn, "Filter On", "Filter", Scale::List, DisplayUnit::None, 0, 1, 1, kOffOn, countOf(kOffOn)},
+    {kLfo1On, "LFO 1 On", "LFO 1", Scale::List, DisplayUnit::None, 0, 1, 1, kOffOn, countOf(kOffOn)},
+    {kLfo2On, "LFO 2 On", "LFO 2", Scale::List, DisplayUnit::None, 0, 1, 1, kOffOn, countOf(kOffOn)},
+    {kMEnvOn, "Mod Env On", "Mod Env", Scale::List, DisplayUnit::None, 0, 1, 1, kOffOn, countOf(kOffOn)},
+    {kMatrixOn, "Mod Matrix On", "Matrix", Scale::List, DisplayUnit::None, 0, 1, 1, kOffOn, countOf(kOffOn)},
+    {kChorusOn, "Chorus On", "Chorus", Scale::List, DisplayUnit::None, 0, 1, 1, kOffOn, countOf(kOffOn)},
+    {kDlyOn, "Delay On", "Delay", Scale::List, DisplayUnit::None, 0, 1, 1, kOffOn, countOf(kOffOn)},
+    {kRevOn, "Reverb On", "Reverb", Scale::List, DisplayUnit::None, 0, 1, 1, kOffOn, countOf(kOffOn)},
 };
 
 constexpr int kNumPatchParams = static_cast<int>(kNumParams);

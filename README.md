@@ -2,11 +2,11 @@
 
 An 80s-style polysynth (keys, pads, leads) as a VST3 instrument, built on the Steinberg VST3 SDK.
 
-**Status: Phase 3 (character & features) — v0.3.0**
+**Status: v0.4.0 — 43-patch factory bank, section switches**
 
 ## Sound engine
 
-- **Oscillators:** OSC 1 (Saw, Pulse, Saw+Pulse, Triangle) with pulse width and LFO PWM; OSC 2 (Saw, Pulse, Triangle, Sine) with semitone and fine tune; square sub one octave down; white noise.
+- **Oscillators:** OSC 1 (Saw, Pulse, Saw+Pulse, Triangle, Sine) with pulse width and LFO PWM; OSC 2 (Saw, Pulse, Triangle, Sine) with semitone and fine tune; square sub one octave down; white noise.
 - **Filter:** 24 dB/oct resonant ladder low-pass with saturating feedback (self-oscillates at full resonance), plus a 6 dB high-pass. Envelope (bipolar), LFO, keyboard tracking and velocity modulation.
 - **Envelopes:** analog-style ADSR for filter and amp, amp velocity sensitivity.
 - **LFO:** Triangle, Sine, Square, Saw Down, Random; Juno-style delayed fade-in; vibrato amount.
@@ -21,15 +21,23 @@ An 80s-style polysynth (keys, pads, leads) as a VST3 instrument, built on the St
 
 ## Factory patches
 
-Init, Juno Brass, Dream Pad, Bright Keys, Strings 1983, Synthwave Lead, Square Solo, Poly Pluck, Analog Bass,
-Sync Lead, Arp Nightdrive, X-Mod Bell, Nebula Pad, Wheel Brass.
+43 patches in 7 categories (click the patch name for the browser):
+
+- **Keys:** Bright Keys, X-Mod Bell, Glass EP, Chorus Piano, Clav Funk, Organ 85, Toy Box
+- **Pads:** Dream Pad, Nebula Pad, Warm Juno Pad, Glass Pad, Dark Choir, Sweep Pad, Sunset Swell
+- **Strings & Brass:** Strings 1983, Juno Brass, Wheel Brass, Lo-Fi Strings, Stab Brass
+- **Leads:** Synthwave Lead, Square Solo, Sync Lead, Mono Saw Lead, Hollow Lead, Theremin, Screamer
+- **Bass:** Analog Bass, Juno Sub Bass, Funk Pluck Bass, Reese 87, Acid Line, Sync Bass
+- **Arps & Plucks:** Arp Nightdrive, Poly Pluck, Arp Crystal, Arp Bassline, Echo Pluck, Upside Arp
+- **FX:** Laser Zap, Wind Tunnel, Sci-Fi Drone, Bell Tower
 
 ## Panel tips
 
 - **Size:** pick 100–200% from the zoom menu at the top (default 125%). Your choice is remembered for new instances (`%APPDATA%\Retro80\settings.txt`).
 - **Pages:** SYNTH (oscillators, filter, envelopes, LFO 1, voice, wave display) and MOD · ARP · FX.
 - **Patches:** arrows to step, or click the patch name for the full list.
-- **On/Off buttons** (Sync, Arp, Latch, Ping-Pong): click to toggle.
+- **Section on/off:** click a section title with an LED (OSC 1/2, Filter, LFO 1/2, Mod Env, Arpeggiator, Mod Matrix, Chorus, Delay, Reverb) to switch it off; its controls dim.
+- **On/Off buttons** (Sync, Latch, Ping-Pong): click to toggle.
 - **Wave / Mode / Chorus:** click to open a dropdown (wave menus show the shapes; the Pulse icon follows the PW knob).
 - Drag knobs up/down; hold **Shift** for fine control.
 - **Double-click** (or Ctrl+click) a knob to reset it.

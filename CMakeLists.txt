@@ -10,7 +10,7 @@ if(NOT EXISTS "${vst3sdk_SOURCE_DIR}/CMakeLists.txt")
     message(FATAL_ERROR "VST3 SDK missing. Run: git submodule update --init --recursive")
 endif()
 
-project(Retro80 VERSION 0.3.0 LANGUAGES C CXX)
+project(Retro80 VERSION 0.4.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
