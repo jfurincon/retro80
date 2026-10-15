@@ -1,0 +1,54 @@
+cmake_minimum_required(VERSION 3.25)
+
+# Only build what we need from the SDK.
+option(SMTG_ENABLE_VST3_PLUGIN_EXAMPLES "Enable VST 3 Plug-in Examples" OFF)
+option(SMTG_ENABLE_VST3_HOSTING_EXAMPLES "Enable VST 3 Hosting Examples" OFF)
+option(SMTG_ENABLE_VSTGUI_SUPPORT "Enable VSTGUI Support" OFF)
+
+set(vst3sdk_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/external/vst3sdk")
+if(NOT EXISTS "${vst3sdk_SOURCE_DIR}/CMakeLists.txt")
+    message(FATAL_ERROR "VST3 SDK missing. Run: git submodule update --init --recursive")
+endif()
+
+project(Retro80 VERSION 0.1.0 LANGUAGES C CXX)
+
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+if(MINGW)
+    # MinGW has no std::aligned_alloc; use _aligned_malloc/_aligned_free like MSVC.
+    set(_aa "${vst3sdk_SOURCE_DIR}/public.sdk/source/vst/utility/alignedalloc.h")
+    file(READ "${_aa}" _aa_text)
+    string(REPLACE "#elif defined(_MSC_VER)\n\tdata = _aligned_malloc"
+                   "#elif defined(_MSC_VER) || defined(__MINGW32__)\n\tdata = _aligned_malloc"
+                   _aa_text "${_aa_text}")
+    string(REPLACE "#if defined(_MSC_VER)\n\t\t_aligned_free"
+                   "#if defined(_MSC_VER) || defined(__MINGW32__)\n\t\t_aligned_free"
+                   _aa_text "${_aa_text}")
+    file(WRITE "${_aa}" "${_aa_text}")
+endif()
+
+add_subdirectory(${vst3sdk_SOURCE_DIR} ${PROJECT_BINARY_DIR}/vst3sdk)
+smtg_enable_vst3_sdk()
+
+smtg_add_vst3plugin(Retro80
+    source/ids.h
+    source/dsp/engine.h
+    source/processor.h
+    source/processor.cpp
+    source/controller.h
+    source/controller.cpp
+    source/entry.cpp
+)
+target_link_libraries(Retro80 PRIVATE sdk)
+
+if(MINGW)
+    # Self-contained DLL: no MinGW runtime DLLs needed on the user's PC.
+    target_link_options(Retro80 PRIVATE -static -static-libgcc -static-libstdc++)
+endif()
+
+# Offline test: renders a WAV through the DSP engine (host build only).
+if(NOT CMAKE_CROSSCOMPILING)
+    add_executable(render_test tests/render_test.cpp)
+    target_include_directories(render_test PRIVATE source)
+endif()
